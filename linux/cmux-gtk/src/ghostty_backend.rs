@@ -233,10 +233,16 @@ pub fn status() -> &'static GhosttyStatus {
     })
 }
 
-pub fn renderer_available() -> bool {
-    loader()
-        .map(|loader| loader.status.renderer_available)
-        .unwrap_or(false)
+pub fn disabled_status() -> GhosttyStatus {
+    GhosttyStatus {
+        available: false,
+        library_available: false,
+        renderer_available: false,
+        library_path: None,
+        version: None,
+        abi_version: None,
+        reason: Some("Ghostty renderer disabled by terminalBackend=pty".to_string()),
+    }
 }
 
 pub fn create_surface(

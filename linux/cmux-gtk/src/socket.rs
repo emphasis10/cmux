@@ -1989,6 +1989,7 @@ fn dispatch_line(line: &str, state: &AppState) -> String {
         "ping" | "app.ping" | "system.ping" => json!({ "pong": true }),
         "app.status" => {
             let settings = crate::settings::get();
+            let ghostty = ghostty_status_for_backend(settings.terminal_backend);
             json!({
                 "platform": "linux",
                 "socket": {
@@ -1997,15 +1998,15 @@ fn dispatch_line(line: &str, state: &AppState) -> String {
                 "settings_path": crate::settings::path().map(|path| path.display().to_string()),
                 "terminal_backend": format!("{:?}", settings.terminal_backend).to_ascii_lowercase(),
                 "terminal_runtime": {
-                    "defaultBackend": if crate::ghostty_backend::renderer_available() { "ghostty" } else { "pty" },
+                    "defaultBackend": if ghostty.renderer_available { "ghostty" } else { "pty" },
                     "socketControllable": true
                 },
-                "ghostty": crate::ghostty_backend::status(),
+                "ghostty": ghostty,
             })
         },
         "system.capabilities" => {
             let settings = crate::settings::get();
-            let ghostty = crate::ghostty_backend::status();
+            let ghostty = ghostty_status_for_backend(settings.terminal_backend);
             json!({
                 "protocol": "cmux-socket",
                 "version": 2,
@@ -2210,6 +2211,16 @@ fn dispatch_line(line: &str, state: &AppState) -> String {
         result: Some(result),
         error: None,
     })
+}
+
+fn ghostty_status_for_backend(
+    backend: crate::settings::TerminalBackendPreference,
+) -> crate::ghostty_backend::GhosttyStatus {
+    if backend == crate::settings::TerminalBackendPreference::Pty {
+        crate::ghostty_backend::disabled_status()
+    } else {
+        crate::ghostty_backend::status().clone()
+    }
 }
 
 fn dispatch_v1_line(line: &str, state: &AppState) -> String {

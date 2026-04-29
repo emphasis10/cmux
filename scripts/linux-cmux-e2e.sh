@@ -17,6 +17,7 @@ GHOSTTY_FLAGS="${CMUX_GHOSTTY_GTK_EMBED_BUILD_FLAGS:-}"
 CURRENT_APP_PID=""
 CURRENT_RUN_DIR=""
 CURRENT_KEEP_DIR=0
+CMUX_E2E_LOG=""
 
 usage() {
   cat <<EOF
@@ -53,13 +54,18 @@ die() {
 }
 
 cleanup_current() {
+  local status="${1:-0}"
+  if [[ "$status" -ne 0 && -n "${CMUX_E2E_LOG:-}" && -r "$CMUX_E2E_LOG" ]]; then
+    log "cmux app log ($CMUX_E2E_LOG)"
+    sed -n '1,220p' "$CMUX_E2E_LOG" >&2 || true
+  fi
   if [[ -n "$CURRENT_APP_PID" ]]; then
     kill "$CURRENT_APP_PID" >/dev/null 2>&1 || true
     wait "$CURRENT_APP_PID" >/dev/null 2>&1 || true
     CURRENT_APP_PID=""
   fi
   if [[ -n "$CURRENT_RUN_DIR" ]]; then
-    if [[ "$CURRENT_KEEP_DIR" -eq 1 ]]; then
+    if [[ "$CURRENT_KEEP_DIR" -eq 1 || "$status" -ne 0 ]]; then
       log "Kept runtime directory: $CURRENT_RUN_DIR"
     else
       rm -rf "$CURRENT_RUN_DIR"
@@ -68,7 +74,7 @@ cleanup_current() {
   fi
 }
 
-trap cleanup_current EXIT
+trap 'cleanup_current $?' EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -402,7 +408,7 @@ run_cmux_suite() {
   run_cli_json close-surface --surface "$surface_id" >/dev/null
 
   log "cmux $backend suite passed"
-  cleanup_current
+  cleanup_current 0
 }
 
 selected_backends() {

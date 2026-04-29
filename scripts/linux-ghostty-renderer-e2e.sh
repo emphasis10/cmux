@@ -12,6 +12,10 @@ RUN_SMOKE=1
 KEEP_RUNNING=0
 ZIG_VERSION="${CMUX_ZIG_VERSION:-0.15.2}"
 GHOSTTY_FLAGS="${CMUX_GHOSTTY_GTK_EMBED_BUILD_FLAGS:-}"
+CURRENT_APP_PID=""
+CURRENT_RUN_DIR=""
+CURRENT_KEEP_DIR=0
+CMUX_E2E_LOG=""
 
 usage() {
   cat <<EOF
@@ -43,6 +47,29 @@ die() {
   printf 'error: %s\n' "$*" >&2
   exit 1
 }
+
+cleanup_current() {
+  local status="${1:-0}"
+  if [[ "$status" -ne 0 && -n "${CMUX_E2E_LOG:-}" && -r "$CMUX_E2E_LOG" ]]; then
+    log "cmux app log ($CMUX_E2E_LOG)"
+    sed -n '1,220p' "$CMUX_E2E_LOG" >&2 || true
+  fi
+  if [[ -n "$CURRENT_APP_PID" ]]; then
+    kill "$CURRENT_APP_PID" >/dev/null 2>&1 || true
+    wait "$CURRENT_APP_PID" >/dev/null 2>&1 || true
+    CURRENT_APP_PID=""
+  fi
+  if [[ -n "$CURRENT_RUN_DIR" ]]; then
+    if [[ "$CURRENT_KEEP_DIR" -eq 1 || "$status" -ne 0 ]]; then
+      log "Kept runtime directory: $CURRENT_RUN_DIR"
+    else
+      rm -rf "$CURRENT_RUN_DIR"
+    fi
+    CURRENT_RUN_DIR=""
+  fi
+}
+
+trap 'cleanup_current $?' EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -207,26 +234,14 @@ run_smoke() {
     return 0
   fi
 
-  local run_dir socket settings state log_file app_pid
+  local run_dir socket settings state
   run_dir="$(mktemp -d "${TMPDIR:-/tmp}/cmux-ghostty-smoke.XXXXXX")"
+  CURRENT_RUN_DIR="$run_dir"
+  CURRENT_KEEP_DIR="$KEEP_RUNNING"
   socket="$run_dir/cmux.sock"
   settings="$run_dir/settings.json"
   state="$run_dir/session-linux.json"
-  log_file="$run_dir/cmux-gui.log"
-  app_pid=""
-
-  cleanup() {
-    if [[ -n "$app_pid" && "$KEEP_RUNNING" -eq 0 ]]; then
-      kill "$app_pid" >/dev/null 2>&1 || true
-      wait "$app_pid" >/dev/null 2>&1 || true
-    fi
-    if [[ "$KEEP_RUNNING" -eq 0 ]]; then
-      rm -rf "$run_dir"
-    else
-      log "Kept runtime directory: $run_dir"
-    fi
-  }
-  trap cleanup RETURN
+  CMUX_E2E_LOG="$run_dir/cmux-gui.log"
 
   printf '{"terminalBackend":"ghostty","desktopNotifications":false}\n' > "$settings"
   mkdir -p "$run_dir/xdg-runtime"
@@ -250,15 +265,15 @@ run_smoke() {
   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$run_dir/xdg-runtime}"
 
   log "Launching cmux GTK app for smoke test"
-  "${app_cmd[@]}" >"$log_file" 2>&1 &
-  app_pid="$!"
+  "${app_cmd[@]}" >"$CMUX_E2E_LOG" 2>&1 &
+  CURRENT_APP_PID="$!"
 
   for _ in $(seq 1 80); do
     if [[ -S "$socket" ]] && "${cli_cmd[@]}" --socket "$socket" ping >/dev/null 2>&1; then
       break
     fi
-    if ! kill -0 "$app_pid" >/dev/null 2>&1; then
-      sed -n '1,120p' "$log_file" >&2 || true
+    if ! kill -0 "$CURRENT_APP_PID" >/dev/null 2>&1; then
+      sed -n '1,120p' "$CMUX_E2E_LOG" >&2 || true
       die "cmux app exited before creating socket"
     fi
     sleep 0.25
@@ -307,6 +322,7 @@ run_smoke() {
 
   "${cli_cmd[@]}" --socket "$socket" --json close-surface --surface "$surface_id" >/dev/null
   log "Ghostty renderer smoke test passed"
+  cleanup_current 0
 }
 
 main() {
