@@ -149,8 +149,12 @@ build_and_package() {
   local deb
   deb="$(find "$DEB_DIR" -name "cmux_${VERSION}_*.deb" -print -quit)"
   [[ -n "$deb" ]] || die "package not found in $DEB_DIR"
-  dpkg-deb -c "$deb" | grep -q '/usr/lib/cmux/libghostty-gtk-embed.so' ||
+  local contents
+  contents="$(mktemp "${TMPDIR:-/tmp}/cmux-deb-contents.XXXXXX")"
+  dpkg-deb -c "$deb" > "$contents"
+  grep -q '/usr/lib/cmux/libghostty-gtk-embed.so' "$contents" ||
     die "package does not contain /usr/lib/cmux/libghostty-gtk-embed.so"
+  rm -f "$contents"
   printf '%s\n' "$deb"
 }
 

@@ -185,10 +185,14 @@ build_and_package() {
   local deb
   deb="$(find "$DEB_DIR" -name "cmux_${VERSION}_*.deb" -print -quit)"
   [[ -n "$deb" ]] || die "package not found in $DEB_DIR"
-  dpkg-deb -c "$deb" | grep -q '/usr/lib/cmux/cmux-gui' ||
+  local contents
+  contents="$(mktemp "${TMPDIR:-/tmp}/cmux-deb-contents.XXXXXX")"
+  dpkg-deb -c "$deb" > "$contents"
+  grep -q '/usr/lib/cmux/cmux-gui' "$contents" ||
     die "package does not contain /usr/lib/cmux/cmux-gui"
-  dpkg-deb -c "$deb" | grep -q '/usr/lib/cmux/cmuxd-remote' ||
+  grep -q '/usr/lib/cmux/cmuxd-remote' "$contents" ||
     die "package does not contain /usr/lib/cmux/cmuxd-remote"
+  rm -f "$contents"
 }
 
 latest_deb() {
