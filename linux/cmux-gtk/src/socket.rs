@@ -331,6 +331,15 @@ impl AppState {
         Ok(())
     }
 
+    pub fn close_workspace_by_id(&self, workspace_id: &str) -> Result<(), String> {
+        let mut state = self.inner.lock().expect("app state lock poisoned");
+        let workspace_id =
+            resolve_workspace_identifier(&state, workspace_id).map_err(|error| error.message)?;
+        close_workspace_record(&mut state, &workspace_id)
+            .map(|_| ())
+            .map_err(|error| error.message)
+    }
+
     pub fn focus_surface_by_id(&self, surface_id: &str) -> Result<(), String> {
         let mut state = self.inner.lock().expect("app state lock poisoned");
         let surface_id = resolve_surface_identifier(&state, surface_id).map_err(|error| error.message)?;
@@ -621,32 +630,7 @@ impl AppState {
         let workspace_id = required_workspace_param(params.as_ref())?;
         let mut state = self.inner.lock().expect("app state lock poisoned");
         let workspace_id = resolve_workspace_identifier(&state, &workspace_id)?;
-        let index = state
-            .workspaces
-            .iter()
-            .position(|workspace| workspace.id == workspace_id)
-            .ok_or_else(|| invalid_params(format!("unknown workspace: {workspace_id}")))?;
-        if state.workspaces.len() == 1 {
-            return Err(invalid_params("cannot close the last workspace"));
-        }
-        let workspace = state.workspaces.remove(index);
-        if state.active_workspace_id.as_deref() == Some(workspace.id.as_str()) {
-            let active_workspace_id = state.workspaces.first().map(|workspace| workspace.id.clone());
-            let active_surface_id = state
-                .workspaces
-                .first()
-                .and_then(|workspace| workspace.surfaces.first())
-                .map(|surface| surface.id.clone());
-            let active_pane_id = state
-                .workspaces
-                .first()
-                .and_then(|workspace| workspace.panes.first())
-                .map(|pane| pane.id.clone());
-            state.active_workspace_id = active_workspace_id;
-            state.active_pane_id = active_pane_id;
-            state.active_surface_id = active_surface_id;
-        }
-        mark_state_changed(&mut state);
+        let workspace = close_workspace_record(&mut state, &workspace_id)?;
         Ok(json!({
             "window_id": window_id(),
             "workspace_id": workspace.id,
@@ -2412,6 +2396,49 @@ fn repair_state(mut state: State) -> State {
     }
     state.revision = state.revision.saturating_add(1);
     state
+}
+
+fn close_workspace_record(state: &mut State, workspace_id: &str) -> Result<WorkspaceRecord, RpcError> {
+    let index = state
+        .workspaces
+        .iter()
+        .position(|workspace| workspace.id == workspace_id)
+        .ok_or_else(|| invalid_params(format!("unknown workspace: {workspace_id}")))?;
+    if state.workspaces.len() == 1 {
+        return Err(invalid_params("cannot close the last workspace"));
+    }
+
+    let workspace = state.workspaces.remove(index);
+    for surface in &workspace.surfaces {
+        match surface.kind {
+            SurfaceKind::Terminal => {
+                let _ = terminal::unregister(&surface.id);
+            }
+            SurfaceKind::Browser => {
+                let _ = browser::unregister(&surface.id);
+            }
+            SurfaceKind::Markdown => {}
+        }
+    }
+
+    if state.active_workspace_id.as_deref() == Some(workspace.id.as_str()) {
+        let active_workspace_id = state.workspaces.first().map(|workspace| workspace.id.clone());
+        let active_surface_id = state
+            .workspaces
+            .first()
+            .and_then(|workspace| workspace.surfaces.first())
+            .map(|surface| surface.id.clone());
+        let active_pane_id = state
+            .workspaces
+            .first()
+            .and_then(|workspace| workspace.panes.first())
+            .map(|pane| pane.id.clone());
+        state.active_workspace_id = active_workspace_id;
+        state.active_pane_id = active_pane_id;
+        state.active_surface_id = active_surface_id;
+    }
+    mark_state_changed(state);
+    Ok(workspace)
 }
 
 fn mark_state_changed(state: &mut State) {

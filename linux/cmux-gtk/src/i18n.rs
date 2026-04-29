@@ -3,6 +3,8 @@ pub fn tr(key: &str) -> &'static str {
         "app.title" => "cmux",
         "sidebar.workspaces" => "Workspaces",
         "sidebar.newWorkspace" => "New workspace",
+        "sidebar.closeWorkspace" => "Close workspace",
+        "sidebar.closeWorkspaceLast" => "Cannot close the last workspace",
         "sidebar.socket" => "Socket",
         "sidebar.notifications.none" => "No notifications",
         "sidebar.notifications.one" => "1 notification",

@@ -312,10 +312,14 @@ fn refresh_workspace_rows(
         }
     }
 
+    let can_close_workspaces = summaries.len() > 1;
     for workspace in summaries {
+        let row_container = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        row_container.set_halign(gtk::Align::Fill);
+
         let row = gtk::Button::new();
         row.set_halign(gtk::Align::Fill);
-
+        row.set_hexpand(true);
         if workspace.selected || *selected_workspace.borrow() == workspace.id {
             row.add_css_class("suggested-action");
         }
@@ -344,7 +348,7 @@ fn refresh_workspace_rows(
         let row_rows = rows.clone();
         let row_state = state.clone();
         let row_selected = Rc::clone(selected_workspace);
-        let row_workspace_id = workspace.id;
+        let row_workspace_id = workspace.id.clone();
         row.connect_clicked(move |_| {
             if let Err(error) = row_state.select_workspace_by_id(&row_workspace_id) {
                 eprintln!("cmux linux workspace select failed: {error}");
@@ -353,7 +357,41 @@ fn refresh_workspace_rows(
             refresh_workspace_rows(&row_rows, &row_state, &row_selected);
         });
 
-        rows.append(&row);
+        row_container.append(&row);
+
+        let close = gtk::Button::from_icon_name("window-close-symbolic");
+        close.set_tooltip_text(Some(if can_close_workspaces {
+            i18n::tr("sidebar.closeWorkspace")
+        } else {
+            i18n::tr("sidebar.closeWorkspaceLast")
+        }));
+        close.set_valign(gtk::Align::Center);
+        close.set_sensitive(can_close_workspaces);
+        let close_rows = rows.clone();
+        let close_state = state.clone();
+        let close_selected = Rc::clone(selected_workspace);
+        let close_workspace_id = workspace.id;
+        close.connect_clicked(move |_| {
+            if let Err(error) = close_state.close_workspace_by_id(&close_workspace_id) {
+                eprintln!("cmux linux workspace close failed: {error}");
+            }
+            let summaries = close_state.workspace_summaries();
+            let selected_still_exists = summaries
+                .iter()
+                .any(|workspace| workspace.id == *close_selected.borrow());
+            if !selected_still_exists {
+                *close_selected.borrow_mut() = summaries
+                    .iter()
+                    .find(|workspace| workspace.selected)
+                    .or_else(|| summaries.first())
+                    .map(|workspace| workspace.id.clone())
+                    .unwrap_or_default();
+            }
+            refresh_workspace_rows(&close_rows, &close_state, &close_selected);
+        });
+        row_container.append(&close);
+
+        rows.append(&row_container);
     }
 }
 
