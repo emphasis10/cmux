@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION_FILE="/usr/share/doc/cmux/version"
+
+default_socket_path() {
+  if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+    printf '%s\n' "$XDG_RUNTIME_DIR/cmux/cmux.sock"
+  else
+    printf '%s\n' "/tmp/cmux.sock"
+  fi
+}
+
+if [[ "${1:-}" == "--version" || "${1:-}" == "version" ]]; then
+  if [[ -r "$VERSION_FILE" ]]; then
+    printf 'cmux %s\n' "$(tr -d '\r\n' < "$VERSION_FILE")"
+  else
+    printf 'cmux unknown\n'
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == "app" || "${1:-}" == "gui" ]]; then
+  shift
+  exec /usr/lib/cmux/cmux-gui "$@"
+fi
+
+if [[ "${1:-}" == "remote-daemon" ]]; then
+  shift
+  exec /usr/lib/cmux/cmuxd-remote "$@"
+fi
+
+if [[ -z "${CMUX_SOCKET_PATH:-}" ]]; then
+  export CMUX_SOCKET_PATH="$(default_socket_path)"
+fi
+
+exec /usr/lib/cmux/cmuxd-remote cli "$@"

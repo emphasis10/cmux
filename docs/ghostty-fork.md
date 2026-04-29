@@ -14,7 +14,7 @@ When we change the fork, update this document and the parent submodule SHA.
 
 Fork main has advanced beyond the March 30, 2026 rebase onto upstream `main`
 at `3509ccf78` (`v1.3.1-457-g3509ccf78`).
-Current cmux pinned fork head: `3b684a085` (`tip-1717-g3b684a085`).
+Current cmux pinned fork head: `b8a1dd709` (`tip-1719-gb8a1dd709`).
 
 ### 1) macOS display link restart on display changes
 
@@ -123,6 +123,24 @@ tend to conflict together during rebases.
 Fork main now carries the section 8 APC handling fix plus later upstream merges;
 the current cmux pin is the head listed above.
 
+### 9) Linux GTK embed ABI for cmux
+
+- Commit: `b8a1dd709` (Add Linux GTK embed ABI)
+- Files:
+  - `build.zig`
+  - `src/build/SharedDeps.zig`
+  - `src/build_config.zig`
+  - `src/main_gtk_embed.zig`
+- Summary:
+  - Adds `zig build gtk-embed-lib -Dapp-runtime=gtk -Doptimize=ReleaseFast`,
+    which emits `libghostty-gtk-embed.so`.
+  - Exposes a small C ABI for cmux to initialize Ghostty's GTK runtime, create
+    an existing GTK `Surface` widget with command and working-directory
+    overrides, send text/key input, read visible terminal text, focus, resize,
+    refresh, query health, and release the widget.
+  - The ABI is Linux-only and is loaded dynamically by cmux, so macOS
+    GhosttyKit and the existing embedded C APIs remain unchanged.
+
 ## Upstreamed fork changes
 
 ### cursor-click-to-move respects OSC 133 click-to-move
@@ -159,7 +177,15 @@ These files change frequently upstream; be careful when rebasing the fork:
 
 - `build.zig`
   - Upstream's new wasm/libghostty work touched the same build graph. Keep the cmux-only `cli-helper`
-    step wired in without regressing the upstream `lib-vt` or wasm build paths.
+    step and Linux `gtk-embed-lib` step wired in without regressing the upstream
+    `lib-vt` or wasm build paths.
+
+- `src/main_gtk_embed.zig`, `src/apprt/gtk/class/application.zig`, `src/apprt/gtk/class/surface.zig`
+  - The embed ABI intentionally reuses Ghostty's GTK `Application` and
+    `Surface` classes while cmux owns the outer GTK window. If upstream changes
+    `Application.default()`, GTK startup, template loading, or `Surface.new`
+    overrides, re-check that the ABI still initializes resources before
+    returning a `GtkWidget*`.
 
 - `include/ghostty.h`, `src/Surface.zig`, `src/apprt/embedded.zig`
   - Upstream removed cmux-used selection exports. Preserve the re-exported

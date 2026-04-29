@@ -1,0 +1,16 @@
+[package]
+name = "cmux-gtk"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "cmux-gui"
+path = "src/main.rs"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.10", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "0.8", features = ["v1_5"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"

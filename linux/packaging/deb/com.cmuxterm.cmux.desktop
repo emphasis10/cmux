@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=cmux
+Comment=Terminal workspace for AI coding agents
+Exec=/usr/bin/cmux app
+Icon=com.cmuxterm.cmux
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;agent;ai;coding;workspace;
+StartupNotify=true
+StartupWMClass=cmux

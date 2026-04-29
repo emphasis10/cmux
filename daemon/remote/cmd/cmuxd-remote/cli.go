@@ -67,12 +67,23 @@ var commands = []commandSpec{
 	{name: "focus-panel", proto: protoV2, v2Method: "surface.focus", flagKeys: []string{"panel", "workspace"}, paramKeyOverrides: map[string]string{"panel": "surface_id"}},
 	{name: "list-panes", proto: protoV2, v2Method: "pane.list", flagKeys: []string{"workspace"}},
 	{name: "list-pane-surfaces", proto: protoV2, v2Method: "pane.surfaces", flagKeys: []string{"pane"}},
-	{name: "new-pane", proto: protoV2, v2Method: "pane.create", flagKeys: []string{"workspace", "direction", "type", "url"}, defaultParams: map[string]any{"direction": "right"}},
-	{name: "new-surface", proto: protoV2, v2Method: "surface.create", flagKeys: []string{"workspace", "pane", "type", "url"}},
+	{name: "new-pane", proto: protoV2, v2Method: "pane.create", flagKeys: []string{"workspace", "direction", "type", "url", "command", "working-directory"}, defaultParams: map[string]any{"direction": "right"}},
+	{name: "new-surface", proto: protoV2, v2Method: "surface.create", flagKeys: []string{"workspace", "pane", "type", "url", "command", "working-directory"}},
 	{name: "new-split", proto: protoV2, v2Method: "surface.split", flagKeys: []string{"surface", "direction"}},
+	{name: "move-surface", proto: protoV2, v2Method: "surface.move", flagKeys: []string{"surface", "pane", "index"}},
+	{name: "reorder-surface", proto: protoV2, v2Method: "surface.reorder", flagKeys: []string{"surface", "pane", "index", "before-surface", "after-surface"}},
+	{name: "drag-to-split", proto: protoV2, v2Method: "surface.drag_to_split", flagKeys: []string{"surface", "direction"}},
 	{name: "close-surface", proto: protoV2, v2Method: "surface.close", flagKeys: []string{"surface"}},
 	{name: "send", proto: protoV2, v2Method: "surface.send_text", flagKeys: []string{"surface", "text"}},
 	{name: "send-key", proto: protoV2, v2Method: "surface.send_key", flagKeys: []string{"surface", "key"}},
+	{name: "read-surface", proto: protoV2, v2Method: "surface.read_text", flagKeys: []string{"surface"}},
+	{name: "clear-surface", proto: protoV2, v2Method: "surface.clear_history", flagKeys: []string{"surface"}},
+	{name: "surface-health", proto: protoV2, v2Method: "surface.health", flagKeys: []string{"surface"}},
+	{name: "focus-pane", proto: protoV2, v2Method: "pane.focus", flagKeys: []string{"pane"}},
+	{name: "swap-pane", proto: protoV2, v2Method: "pane.swap", flagKeys: []string{"pane", "target-pane"}},
+	{name: "resize-pane", proto: protoV2, v2Method: "pane.resize", flagKeys: []string{"pane", "ratio"}},
+	{name: "last-pane", proto: protoV2, v2Method: "pane.last", noParams: true},
+	{name: "equalize-splits", proto: protoV2, v2Method: "workspace.equalize_splits", flagKeys: []string{"workspace"}},
 	{name: "notify", proto: protoV2, v2Method: "notification.create", flagKeys: []string{"title", "body", "workspace"}},
 	{name: "refresh-surfaces", proto: protoV2, v2Method: "surface.refresh", noParams: true},
 }
@@ -286,7 +297,7 @@ func runRPC(socketPath string, args []string, jsonOutput bool, refreshAddr func(
 // runBrowserRelay handles "cmux browser <subcommand>" by mapping to browser.* v2 methods.
 func runBrowserRelay(socketPath string, args []string, jsonOutput bool, refreshAddr func() string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "cmux browser: requires a subcommand (open, navigate, back, forward, reload, get-url)")
+		fmt.Fprintln(os.Stderr, "cmux browser: requires a subcommand (open, navigate, back, forward, reload, get-url, wait, click, fill, type, press, screenshot, snapshot, eval)")
 		return 2
 	}
 
@@ -324,6 +335,42 @@ func runBrowserRelay(socketPath string, args []string, jsonOutput bool, refreshA
 	case "get-url":
 		method = "browser.url.get"
 		flagKeys = []string{"surface"}
+		useSurfaceEnv = true
+	case "wait":
+		method = "browser.wait"
+		flagKeys = []string{"surface", "selector", "text", "text-contains", "url-contains", "load-state", "timeout", "timeout-ms", "function", "script"}
+		useSurfaceEnv = true
+	case "click", "dblclick", "hover", "focus":
+		method = "browser." + sub
+		flagKeys = []string{"surface", "selector", "snapshot-after"}
+		useSurfaceEnv = true
+	case "fill", "type":
+		method = "browser." + sub
+		flagKeys = []string{"surface", "selector", "text", "value", "snapshot-after"}
+		useSurfaceEnv = true
+	case "press", "keydown", "keyup":
+		method = "browser." + sub
+		flagKeys = []string{"surface", "key", "snapshot-after"}
+		useSurfaceEnv = true
+	case "screenshot":
+		method = "browser.screenshot"
+		flagKeys = []string{"surface", "full-page", "timeout", "timeout-ms"}
+		useSurfaceEnv = true
+	case "snapshot":
+		method = "browser.snapshot"
+		flagKeys = []string{"surface"}
+		useSurfaceEnv = true
+	case "eval":
+		method = "browser.eval"
+		flagKeys = []string{"surface", "script", "expression"}
+		useSurfaceEnv = true
+	case "get-text":
+		method = "browser.get.text"
+		flagKeys = []string{"surface", "selector"}
+		useSurfaceEnv = true
+	case "get-html":
+		method = "browser.get.html"
+		flagKeys = []string{"surface", "selector"}
 		useSurfaceEnv = true
 	default:
 		fmt.Fprintf(os.Stderr, "cmux browser: unknown subcommand %q\n", sub)
@@ -445,6 +492,26 @@ func flagToParamKey(key string) string {
 		return "title"
 	case "working-directory":
 		return "working_directory"
+	case "before-surface":
+		return "before_surface_id"
+	case "after-surface":
+		return "after_surface_id"
+	case "target-pane":
+		return "target_pane_id"
+	case "text-contains":
+		return "text_contains"
+	case "url-contains":
+		return "url_contains"
+	case "load-state":
+		return "load_state"
+	case "timeout-ms":
+		return "timeout_ms"
+	case "full-page":
+		return "full_page"
+	case "snapshot-after":
+		return "snapshot_after"
+	case "prompt-text":
+		return "prompt_text"
 	default:
 		return key
 	}
@@ -773,7 +840,7 @@ func cliUsage() {
 	fmt.Fprintln(os.Stderr, "  send                      Send text to a surface")
 	fmt.Fprintln(os.Stderr, "  send-key                  Send a key to a surface")
 	fmt.Fprintln(os.Stderr, "  notify                    Create a notification")
-	fmt.Fprintln(os.Stderr, "  browser <sub>             Browser commands (open, navigate, back, forward, reload, get-url)")
+	fmt.Fprintln(os.Stderr, "  browser <sub>             Browser commands and automation")
 	fmt.Fprintln(os.Stderr, "  claude-teams [args...]     Launch Claude Code in teammate mode")
 	fmt.Fprintln(os.Stderr, "  omo [args...]              Launch OpenCode with cmux integration")
 	fmt.Fprintln(os.Stderr, "  omx [args...]              Launch Oh My Codex with cmux integration")
